@@ -8,6 +8,7 @@ This software restricts users from copying and pasting files or folders from a s
 ## Key Features
 - **Clipboard Monitoring**: Detects copy-paste attempts at the system level.
 - **Root Folder Protection**: Blocks pasting files or folders that are outside the root directory.
+- **const std::wstring ROOT_FOLDER = L"C:\\Windows"; // past the root folder to restrict**
 - **Unauthorized Action Logging**: Logs all unauthorized paste attempts in a file (`ClipboardMonitorLog.txt`).
 - **Console Logging**: Provides real-time logs for debugging and monitoring.
 - **Hidden Window**: Uses a hidden window for clipboard monitoring events.
@@ -28,8 +29,8 @@ This software restricts users from copying and pasting files or folders from a s
 ### Step 1: Clone the Repository
 1. Clone the repository:
    ```bash
-   git clone <repository_url>
-   cd <repository_folder>
+   git clone <https://github.com/mithlesh-27/Clipboard_Monitor.git>
+   cd <Clipboard_Monitor>
 
 ----
 

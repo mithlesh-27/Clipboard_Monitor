@@ -4,32 +4,40 @@
 #include <string>
 #include <thread>
 #include <filesystem>
-#include <vector>
-#include <fstream> // For logging unauthorized operations
+#include <fstream>
+#include <chrono>
+#include <ctime>
 
-const std::wstring ROOT_FOLDER = L"C:\\Windows"; // past the root folder to restrict
-const std::wstring LOG_FILE = L"ClipboardMonitorLog.txt"; // Log file for unauthorized actions
+const std::wstring ROOT_FOLDER = L"C:\\Users\\Mithlesh\\Documents\\Codes\\C-prog\\assignment\\ClipboardMonitor\\root";
+const std::wstring LOG_FILE = L"ClipboardMonitorLog.txt";
 
-// Check if a file or folder path is within the restricted root folder
-bool IsWithinRootFolder(const std::wstring& path) {
+// Get current timestamp for logging
+std::wstring GetTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t time = std::chrono::system_clock::to_time_t(now);
+    wchar_t buffer[30];
+    wcsftime(buffer, 30, L"%Y-%m-%d %H:%M:%S", localtime(&time));
+    return buffer;
+}
+
+// Check if a file or folder path is within a specific folder
+bool IsWithinFolder(const std::wstring& path, const std::wstring& folder) {
     try {
         std::filesystem::path normalizedPath = std::filesystem::weakly_canonical(path);
-        std::filesystem::path normalizedRoot = std::filesystem::weakly_canonical(ROOT_FOLDER);
-
-        // Ensure the path is equivalent to or a subpath of the root folder
-        return std::filesystem::equivalent(normalizedPath, normalizedRoot) ||
-               normalizedPath.string().find(normalizedRoot.string() + "\\") == 0;
+        std::filesystem::path normalizedFolder = std::filesystem::weakly_canonical(folder);
+        return normalizedPath.string().find(normalizedFolder.string()) == 0;
     } catch (const std::exception& e) {
         std::wcerr << L"Error checking path: " << e.what() << std::endl;
         return false;
     }
 }
 
-// Log unauthorized copy-paste attempts
-void LogUnauthorizedAttempt(const std::wstring& filePath) {
-    std::wofstream logFile(LOG_FILE.c_str(), std::ios::app); // Open the log file in append mode
+// Log operations
+void LogOperation(const std::wstring& filePath, const std::wstring& message, bool isRestricted = false) {
+    std::wofstream logFile(LOG_FILE.c_str(), std::ios::app);
     if (logFile) {
-        logFile << L"Unauthorized copy-paste attempt detected: " << filePath << std::endl;
+        logFile << GetTimestamp() << L" | " << (isRestricted ? L"[RESTRICTED] " : L"[ALLOWED] ") << filePath
+                << L" | " << message << std::endl;
     } else {
         std::wcerr << L"Failed to open log file: " << LOG_FILE << std::endl;
     }
@@ -39,7 +47,7 @@ void LogUnauthorizedAttempt(const std::wstring& filePath) {
 // Block unauthorized paste attempts
 void BlockPaste() {
     if (OpenClipboard(nullptr)) {
-        EmptyClipboard(); // Clear the clipboard to block the paste operation
+        EmptyClipboard();
         CloseClipboard();
         std::wcout << L"Unauthorized paste operation blocked and clipboard cleared!" << std::endl;
     } else {
@@ -47,22 +55,25 @@ void BlockPaste() {
     }
 }
 
-// Handle files from the clipboard and check against the restricted root folder
+// Handle clipboard files and enforce rules
 void HandleClipboardFiles(HDROP hDropInfo) {
-    UINT fileCount = DragQueryFileW(hDropInfo, 0xFFFFFFFF, nullptr, 0); // Get the number of files
+    UINT fileCount = DragQueryFileW(hDropInfo, 0xFFFFFFFF, nullptr, 0); // Get number of files
     for (UINT i = 0; i < fileCount; ++i) {
         wchar_t filePath[MAX_PATH];
-        if (DragQueryFileW(hDropInfo, i, filePath, MAX_PATH)) { // Retrieve each file path
-            std::wcout << L"Detected file: " << filePath << std::endl;
+        if (DragQueryFileW(hDropInfo, i, filePath, MAX_PATH)) {
+            std::wcout << L"Clipboard file detected: " << filePath << std::endl;
 
-            // If the file is within the restricted root folder, block the paste operation
-            if (IsWithinRootFolder(filePath)) {
-                std::wcout << L"Unauthorized file detected: " << filePath << std::endl;
-                LogUnauthorizedAttempt(filePath);
+            bool isSourceWithinRoot = IsWithinFolder(filePath, ROOT_FOLDER);
+
+            if (isSourceWithinRoot) {
+                // Disallow pasting files from root to outside
+                LogOperation(filePath, L"Attempted to paste outside the root folder.", true);
                 BlockPaste();
-                break; // Stop further processing after blocking
+                break;
             } else {
-                std::wcout << L"File allowed: " << filePath << std::endl;
+                // Allow pasting into root folder or other operations
+                LogOperation(filePath, L"Paste operation allowed.");
+                std::wcout << L"Paste operation allowed for: " << filePath << std::endl;
             }
         }
     }
@@ -73,7 +84,7 @@ HWND CreateHiddenWindow() {
     const wchar_t CLASS_NAME[] = L"HiddenClipboardMonitor";
 
     WNDCLASSW wc = {};
-    wc.lpfnWndProc = DefWindowProcW; // Unicode window procedure
+    wc.lpfnWndProc = DefWindowProcW;
     wc.hInstance = GetModuleHandle(nullptr);
     wc.lpszClassName = CLASS_NAME;
 
@@ -86,7 +97,7 @@ HWND CreateHiddenWindow() {
         0,                              // Optional styles
         CLASS_NAME,                     // Window class
         L"Clipboard Monitor",           // Window title
-        0,                              // Hidden window 
+        0,                              // Hidden window
         0, 0, 0, 0,                     // Position and size
         nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
 
@@ -102,7 +113,6 @@ void ClipboardMonitor() {
     HWND hwnd = CreateHiddenWindow();
     if (!hwnd) return;
 
-    // Add clipboard format listener
     if (!AddClipboardFormatListener(hwnd)) {
         std::cerr << "Failed to attach clipboard listener. Error: " << GetLastError() << std::endl;
         DestroyWindow(hwnd);
@@ -116,8 +126,7 @@ void ClipboardMonitor() {
         if (msg.message == WM_CLIPBOARDUPDATE) {
             std::wcout << L"Clipboard updated!" << std::endl;
 
-            if (IsClipboardFormatAvailable(CF_HDROP)) { // Check for file drop format
-                std::wcout << L"CF_HDROP format detected in clipboard!" << std::endl;
+            if (IsClipboardFormatAvailable(CF_HDROP)) {
                 if (OpenClipboard(nullptr)) {
                     HANDLE hDrop = GetClipboardData(CF_HDROP);
                     if (hDrop) {

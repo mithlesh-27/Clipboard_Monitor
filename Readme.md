@@ -1,7 +1,7 @@
 # Clipboard Access Restriction Software
 
 ## Objective
-This software restricts users from copying and pasting files or folders from a specified "root" directory (`C:\Windows` by default) to any location outside this folder, including external drives or cloud locations.
+This software restricts users from copying and pasting files or folders from a specified "root" directory (`C:\Windows` by default) to any location outside this folder, but canpaste any folder or file from non root folder.
 
 ---
 
